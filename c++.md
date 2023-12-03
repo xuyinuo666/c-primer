@@ -547,7 +547,120 @@ cfront = 1; // 容器没有改变,只是改变的临时值cfront
 
 
 
- 
+>  为什么forward_list比较特殊?
+
+![image-20231202164448350](D:\dev\c++\c++_primer\c-primer\c++.assets\image-20231202164448350.png)
+
+增加或者删除一个元素的时候,会影响前驱节点,但是该元素没有保存前驱节点的信息,所以提供了`inser_after` `emplace_after` `erase_after`,操作的是删除节点前的一个节点
+
+
+
+**resize**
+
+重新划分大小
+
+```c
+list<int> a(5,-1); // 5个int值,都为-1
+a.resize(10,8); // 10个int值,前5个-1,后5个8
+a.resize(20,9);// 前五个-1,后五个8,后十个9
+a.resize(5);// 保留最前面的5个-1
+```
+
+==resize不适用与array==,如果`resize`导致容器变小,*vector* *string* *deque*可能导致引用指针迭代器失效
+
+在向容器添加元素后:
+
+- 对于vector 和 string
+  1. 如果导致空间重新分配,迭代器\指针\引用会全部失效
+
+```c
+std::vector<int> a(5,-1);
+
+std::vector<int>::iterator it = a.begin();
+a.insert(a.end()-3, 1); // 直接导致vector的空间再重新分配,it就会失效
+```
+
+​		如果没有空间的重新分配,操作元素之前的指针引用迭代器不会失效.之后的会失效
+
+```c
+	std::vector<int> a(5,-1);
+
+	std::vector<int>::iterator it = a.begin();// 操作的元素之前的迭代器
+	std::vector<int>::iterator it3 = a.end()-1; //操作的元素之后的迭代器
+	std::cout << *it << std::endl;
+
+	a.erase(a.end() - 3); // 删除一个元素
+	a.insert(a.end()-3, 1); // 新增一个元素.并没有空间的重新分配,只是发生替换
+	std::cout << *it << std::endl; // pass
+
+	std::cout << *it3 << std::endl; // error.
+```
+
+
+
+
+
+==todo stl源码剖析(只是说了结论,具体还有分析结构,9\10\11章)==
+
+
+
+
+
+# 智能指针
+
+1. shared_ptr
+2. unique_ptr
+3. weak_ptr
+
+> 共有的操作
+
+```c
+shared_ptr<int> p;
+unique_ptr<int> up;
+p;// 如果为空指针,if(p)为false;
+p.get();//返回p中保存的指针	
+swap(p,up);// 交换指针
+```
+
+> share_ptr独有的操作
+
+```c
+make_shared<T>(args);// 返回一个指向T类型对象的指针,对象的构造参数是args
+shared_ptr<T> p2(p); // 将p的共享指针复制给p2,此时共享指针的计数器+1,p的T类型必须能转换为p2的T类型.
+p=q;  // 必须都是shared_ptr,p的计数器-1,q计数器+1
+q.unique();//p.use_count()==1?true:false  是否只有一个智能指针指向自己所指的对象	
+```
+
+
+
+
+
+**make_shared**类似容器的emplace操作,直接在堆中创建对象
+
+
+
+## 拷贝&赋值
+
+进行拷贝或赋值时,每个shared_ptr都会保存当前已经有几个shared_ptr指向当前对象,也就是计数器
+
+```c
+shared_ptr<int> test(){
+ shared_ptr<int> p = make_shared<int>(1);
+    return p; 
+}
+
+
+void test2(){
+    shared_ptr<int> p = make_shared<int>(1);
+} // 函数结束后,p会被销毁,此时会检查p的引用计数器递减1后是否为0,为0就会销毁所指对象,p也随之销毁
+void test3(){
+    shared_ptr<int> p = make_shared<int>(1);
+    return p; // 返回了p,p进行了复制,引用计数器+1,函数结束后,计数器不为0,不进行销毁
+} 
+
+
+
+```
 
 
 
@@ -555,6 +668,76 @@ cfront = 1; // 容器没有改变,只是改变的临时值cfront
 
 
 
+> 对于定义了自己构造函数的类型,例如string,可以不传初始值,因为自定义了初始值,但是内置类型不行,例如int
+>
+
+```c
+	int* a = new int; // undefined
+	int* b = new int();//0
+
+	cout << *a << endl;
+	cout << *b << endl;
+```
+
+
+
+```c
+const int *p = new const int();//pass
+const int *p2 = new const int(111);//pass
+const int *p3 = new const int; // error const必须初始化
+
+const string *sp = new const string;//pass
+const string *sp2 = new const string("123")// pass
+    
+    
+```
+
+
+
+
+
+不能使用隐式转换的方式创建智能指针,要使用直接初始化的方式创建
+
+```c
+shared_ptr<int> p1 = new int(12);//error
+shared_ptr<int> p2(new int(12));// pass
+
+```
+
+
+
+并且构造对象的构造函数必须是`explicit`
+
+
+
+![image-20231203132657774](D:\dev\c++\c++_primer\c-primer\c++.assets\image-20231203132657774.png)
+
+
+
+![image-20231203132903166](D:\dev\c++\c++_primer\c-primer\c++.assets\image-20231203132903166.png)
+
+
+
+```c
+void process(shared_ptr<int> t) {
+	cout << t.use_count() << endl;
+}// 退出函数时,t计数器-1,如果为0,删除所指对象;
+int main() {
+	int* a = new int(12);
+	shared_ptr<int> ptr1(a); // 引用计数器为1
+	process(ptr1); // 调用process时,发生复制,引用计数器在process为2;
+	cout << *a << endl; // 引用计数器为1,a没有被删除
+}
+// ==========================================================
+void process(shared_ptr<int> t) {
+	cout << t.use_count() << endl;
+}// 退出函数时,t计数器-1,如果为0,删除所指对象;
+int main() {
+	int* a = new int(12);
+	process(shared_ptr<int>(a)); // 调用process时,并没有发生复制,引用计数器在process中还是1;
+	cout << *a << endl; // 引用计数器为0,所指的对象a也被删除.结果未定义
+}
+```
 
 
 
@@ -562,6 +745,7 @@ cfront = 1; // 容器没有改变,只是改变的临时值cfront
 
 
 
+==如果将常规指针交给shared_ptr,就不要再用常规指针访问了==
 
 
 
@@ -569,35 +753,26 @@ cfront = 1; // 容器没有改变,只是改变的临时值cfront
 
 
 
+## unique_ptr
+
+`unique_ptr`只有一个引用,所以不能赋值复制
+
+```c
+unique_ptr<int> p1(12);
+
+unique_ptr<int> p2(p1.release());
+unique_ptr<int> p3(23);
+p3.reset(p2.release());
+
+// release返回所指的内存的指针,并将unique_ptr置空.
+// reset重置指向
+
+//release并不复制delete,需要自己手动删除
+auto ptr= p3.release();
+delete ptr;
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+```
 
 
 
